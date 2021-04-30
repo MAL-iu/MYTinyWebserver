@@ -48,6 +48,22 @@ int main(int argc, char *argv[])
     addsig(SIGPIPE, SIG_IGN);
     //signal(SIGPIPE,SIG_IGN);
 
+
+    MyDB *mydb=NULL;
+    try
+    {
+        mydb=new MyDB;
+        mydb->InitDB("localhost","root","123456","web_user");
+    }
+    catch(...)
+    {
+        printf("MYSQL WRONG\n");
+        return 1;
+    }
+    
+
+
+
     // 创建线程池,捕获错误
     threadpool<http_conn> *pool = NULL;
     try
@@ -60,6 +76,8 @@ int main(int argc, char *argv[])
         printf("Something Wrong\n");
         return 1;
     }
+
+
 
 
     http_conn *users = new http_conn[MAX_FD];
@@ -143,7 +161,7 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 // 初始化这个连接的文件描述符
-                users[connfd].init(connfd, client_address);
+                users[connfd].init(connfd, client_address,mydb);
             }
             // 出现了问题
             if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))

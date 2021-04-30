@@ -20,7 +20,7 @@ struct client_data
 // 定时器类
 class util_timer {
 public:
-    util_timer() : prev(NULL), next(NULL){}
+    util_timer() : prev(nullptr), next(nullptr){}
 
 public:
    time_t expire;   // 任务超时时间，这里使用绝对时间
@@ -33,7 +33,8 @@ public:
 // 定时器链表，它是一个升序、双向链表，且带有头节点和尾节点。
 class sort_timer_lst {
 public:
-    sort_timer_lst() : head( NULL ), tail( NULL ) {}
+    sort_timer_lst() : head( nullptr ), tail( nullptr ) {}
+    
     // 链表被销毁时，删除其中所有的定时器
     ~sort_timer_lst() {
         util_timer* tmp = head;
@@ -79,8 +80,8 @@ public:
         // 如果目标定时器是链表的头节点，则将该定时器从链表中取出并重新插入链表
         if( timer == head ) {
             head = head->next;
-            head->prev = NULL;
-            timer->next = NULL;
+            head->prev = nullptr;
+            timer->next = nullptr;
             add_timer( timer, head );
         } else {
             // 如果目标定时器不是链表的头节点，则将该定时器从链表中取出，然后插入其原来所在位置后的部分链表中
@@ -98,15 +99,15 @@ public:
         // 下面这个条件成立表示链表中只有一个定时器，即目标定时器
         if( ( timer == head ) && ( timer == tail ) ) {
             delete timer;
-            head = NULL;
-            tail = NULL;
+            head = nullptr;
+            tail = nullptr;
             return;
         }
         /* 如果链表中至少有两个定时器，且目标定时器是链表的头节点，
          则将链表的头节点重置为原头节点的下一个节点，然后删除目标定时器。 */
         if( timer == head ) {
             head = head->next;
-            head->prev = NULL;
+            head->prev = nullptr;
             delete timer;
             return;
         }
@@ -114,7 +115,7 @@ public:
         则将链表的尾节点重置为原尾节点的前一个节点，然后删除目标定时器。*/
         if( timer == tail ) {
             tail = tail->prev;
-            tail->next = NULL;
+            tail->next = nullptr;
             delete timer;
             return;
         }
@@ -130,7 +131,7 @@ public:
             return;
         }
         printf( "timer tick\n" );
-        time_t cur = time( NULL );  // 获取当前系统时间
+        time_t cur = time( nullptr );  // 获取当前系统时间
         util_timer* tmp = head;
         // 从头节点开始依次处理每个定时器，直到遇到一个尚未到期的定时器
         while( tmp ) {
@@ -145,7 +146,7 @@ public:
             // 执行完定时器中的定时任务之后，就将它从链表中删除，并重置链表头节点
             head = tmp->next;
             if( head ) {
-                head->prev = NULL;
+                head->prev = nullptr;
             }
             delete tmp;
             tmp = head;
@@ -176,7 +177,7 @@ private:
         if( !tmp ) {
             prev->next = timer;
             timer->prev = prev;
-            timer->next = NULL;
+            timer->next = nullptr;
             tail = timer;
         }
     }

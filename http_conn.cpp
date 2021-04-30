@@ -11,6 +11,12 @@ const char *error_404_form = "The requested file was not found on this server.\n
 const char *error_500_title = "Internal Error";
 const char *error_500_form = "There was an unusual problem serving the requested file.\n";
 
+const char *doc_register = "/register.html";
+const char *doc_nonuser = "/user_notfd.html";
+const char *doc_welcome = "/LOGIN.html";
+const char *doc_pswderror = "/pswd_error.html";
+
+
 // 网站的根目录
 const char *doc_root = "/home/mal/Webserver/resources";
 
@@ -91,7 +97,7 @@ void http_conn::close_conn()
 }
 
 // 初始化连接,外部调用初始化套接字地址
-void http_conn::init(int sockfd, const sockaddr_in &addr)
+void http_conn::init(int sockfd, const sockaddr_in &addr,MyDB *mydb)
 {
     ///设置socket文件描述符
     m_sockfd = sockfd;
@@ -99,6 +105,7 @@ void http_conn::init(int sockfd, const sockaddr_in &addr)
     ///设置socket地址
     m_address = addr;
 
+    m_mydb=mydb;
     // 端口复用
     int reuse = 1;
 //      1)SOL_SOCKET:通用套接字选项.
@@ -143,6 +150,15 @@ void http_conn::init()
     // 待发送的字节数
     m_write_idx = 0;
     // 清空读写缓冲区和路径
+
+    m_login_pswd = 0;
+
+    m_login_name = 0;
+
+
+
+
+
     bzero(m_read_buf, READ_BUFFER_SIZE);
     bzero(m_write_buf, READ_BUFFER_SIZE);
     bzero(m_real_file, FILENAME_LEN);
@@ -230,6 +246,50 @@ http_conn::LINE_STATUS http_conn::parse_line()
     return LINE_OPEN;
 }
 
+
+// 分割所有的&起来的字符
+void http_conn::cut(char *text)
+{
+    char *now=text;
+    while(1)
+    {
+        now=strpbrk(text, "&");
+        if(now)
+            *now++='\0';
+        if (strncasecmp(text, "username=", 9) == 0)
+        {
+            text += 9;
+            m_login_name=text;
+        }
+        if (strncasecmp(text, "Password=", 9) == 0)
+        {
+            text += 9;
+            m_login_pswd=text;
+        }
+        text=now;
+        if(!now) break;
+
+    }
+}
+
+
+http_conn::PSWD_STATUS http_conn::check_pswdAnduser()
+{
+    std::string a="select user_pswd from webuser where user_name=";
+    a=a+"'"+m_login_name+"';";
+
+    char *true_pswd=m_mydb->ExeSQL(a);
+    
+    if(true_pswd==NULL) return USER_NOTFOUND;
+    
+    if(strcmp(true_pswd,m_login_pswd)==0)
+        return PSWD_RIGHT;
+    return PSWD_WRONG;
+
+}
+
+
+
 // 解析HTTP请求行，获得请求方法，目标URL,以及HTTP版本号
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 {
@@ -249,6 +309,10 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
         // 忽略大小写比较
         m_method = GET;
     }
+    else if(strcasecmp(method, "POST") == 0)
+    {
+        m_method = POST;
+    }
     else
     {
         return BAD_REQUEST;
@@ -267,9 +331,22 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
         return BAD_REQUEST;
     }
 
+
+
     /**
      * http://192.168.110.129:10000/index.html
     */
+
+    ///看看有没有密码信息
+    char *_find = strpbrk(m_url, "?");
+    if(_find)
+    {
+        // 使用cut获取密码信息
+        *_find++='\0';
+        cut(_find);
+    }
+
+
 
     if (strncasecmp(m_url, "http://", 7) == 0)
     {
@@ -336,14 +413,15 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
     }
     else
     {
-        printf("oop! unknow header %s\n", text);
+        //printf("oop! unknow header %s\n", text);
     }
     return NO_REQUEST;
 // 事实上就是把connection, content-length, host都判断一下, 然后把相应的信息存起来    
 }
 
-// 我们没有真正解析HTTP请求的消息体，只是判断它是否被完整的读入了
-http_conn::HTTP_CODE http_conn::parse_content(char *text)
+
+// 我们没有真正解析GET请求的请求体，只是判断它是否被完整的读入了
+http_conn::HTTP_CODE http_conn::parse_content_get(char *text)
 {
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
@@ -351,6 +429,49 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
         return GET_REQUEST;
     }
     return NO_REQUEST;
+}
+
+// 解析POST请求的请求体
+
+http_conn::HTTP_CODE http_conn::parse_content_post(char *text)
+{
+    ///m_read_idx 第一个字符位置
+    if (m_read_idx < (m_content_length + m_checked_idx))
+        return NO_REQUEST;
+    text[m_content_length] = '\0';
+    if (text[0] == '\0')
+        return GET_REQUEST;
+
+    cut(text);
+
+    if(m_login_name)
+    {
+        http_conn::PSWD_STATUS st=check_pswdAnduser(); 
+        if(st==PSWD_RIGHT)
+            return RIGHT_PSWD;
+        if(st==PSWD_WRONG)
+            return WRONG_PSWD;
+        if(st==USER_NOTFOUND)
+            return NOTFOUND_USER;
+    }
+    
+    return GET_REQUEST;
+
+}
+
+
+http_conn::HTTP_CODE http_conn::parse_content(char *text)
+{
+    if(m_method==GET)
+    {
+        return parse_content_get(text);
+    }
+    if(m_method==POST)
+    {
+        return parse_content_post(text);
+    }
+    return GET_REQUEST;
+    
 }
 
 // 主状态机，解析请求
@@ -371,7 +492,7 @@ http_conn::HTTP_CODE http_conn::process_read()
 
         // 更新当前新的请求行的行首地址
         m_start_line = m_checked_idx;
-        printf("got 1 http line: %s\n", text);
+        printf("%s\n", text);
 
         switch (m_check_state)
         {
@@ -395,6 +516,22 @@ http_conn::HTTP_CODE http_conn::process_read()
                 }
                 else if (ret == GET_REQUEST)// 没有请求体, 已经获取了完整请求
                 {
+                    if(m_login_name)
+                    {
+                        http_conn::PSWD_STATUS st=check_pswdAnduser(); 
+                        if(st==PSWD_RIGHT)
+                        {
+                            strcpy(m_url,doc_welcome);
+                        }
+                        else if(st==PSWD_WRONG)
+                        {
+                            strcpy(m_url,doc_pswderror);
+                        }
+                        else if(st==USER_NOTFOUND)
+                        {
+                            strcpy(m_url,doc_nonuser);
+                        }
+                    }
                     return do_request();
                 }
                 break;
@@ -406,8 +543,26 @@ http_conn::HTTP_CODE http_conn::process_read()
                 {
                     return do_request();
                 }
-                // 说明行数据还不完整
-                line_status = LINE_OPEN;
+                else if(ret==NO_REQUEST)
+                {
+                    // 说明行数据还不完整
+                    line_status = LINE_OPEN;
+                }
+                else if(ret== RIGHT_PSWD)/// POST请求的密码在请求体,如果请求体解析出来的密码正确
+                {
+                    strcpy(m_url,doc_welcome);
+                    return do_request();
+                }
+                else if(ret == WRONG_PSWD)
+                {
+                    strcpy(m_url,doc_pswderror);
+                    return do_request();
+                }
+                else if(ret == NOTFOUND_USER)
+                {
+                    strcpy(m_url,doc_nonuser);
+                    return do_request();
+                }
                 break;
             }
             default:
@@ -430,10 +585,12 @@ http_conn::HTTP_CODE http_conn::do_request()
     strcpy(m_real_file, doc_root);
     
 
+
     int len = strlen(doc_root);
     // 在根目录后面加上用户请求的路径
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
+    //printf("%s*************************************\n",m_real_file);
     // 获取m_real_file文件的相关的状态信息，-1失败，0成功
     if (stat(m_real_file, &m_file_stat) < 0)
     {
@@ -634,10 +791,15 @@ bool http_conn::add_content_type()
 bool http_conn::process_write(HTTP_CODE ret)
 {
     // 传入读的内容, 从而决定写的内容
+
+
     switch (ret)
     {
     // 服务器内部错误
     case INTERNAL_ERROR:
+
+
+        puts("INTERNAL_ERROR");
         // 错误号500
         // 加入状态行
         add_status_line(500, error_500_title);
@@ -651,6 +813,9 @@ bool http_conn::process_write(HTTP_CODE ret)
         break;
     // 语法错误
     case BAD_REQUEST:
+
+        puts("BAD_REQUEST");
+
         add_status_line(400, error_400_title);
         add_headers(strlen(error_400_form));
         if (!add_content(error_400_form))
@@ -660,6 +825,10 @@ bool http_conn::process_write(HTTP_CODE ret)
         break;
     // 没有资源
     case NO_RESOURCE:
+
+
+        puts("NO_RESOURCE");
+
         add_status_line(404, error_404_title);
         add_headers(strlen(error_404_form));
         if (!add_content(error_404_form))
@@ -669,6 +838,9 @@ bool http_conn::process_write(HTTP_CODE ret)
         break;
     // 权限不足
     case FORBIDDEN_REQUEST:
+
+        puts("FORBIDDEN_REQUEST");
+
         add_status_line(403, error_403_title);
         add_headers(strlen(error_403_form));
         if (!add_content(error_403_form))
@@ -676,15 +848,38 @@ bool http_conn::process_write(HTTP_CODE ret)
             return false;
         }
         break;
+    
+
     // 文件获取成功
     case FILE_REQUEST:
+
+        puts("FILE_REQUEST");
+
         // 加入状态行
         add_status_line(200, ok_200_title);
         // 加入消息头
         add_headers(m_file_stat.st_size);
         // 初始化聚集写
-        m_iv[0].iov_base = m_write_buf;         //读缓冲地址
-        m_iv[0].iov_len = m_write_idx;          //读缓冲大小
+        m_iv[0].iov_base = m_write_buf;         //写缓冲地址
+        m_iv[0].iov_len = m_write_idx;          //写缓冲大小
+        m_iv[1].iov_base = m_file_address;      //文件地址
+        m_iv[1].iov_len = m_file_stat.st_size;  //文件大小
+        m_iv_count = 2;
+
+        // 更新字节数
+        bytes_to_send=m_write_idx+m_file_stat.st_size;
+        return true;
+    case RIGHT_PSWD:
+
+        puts("RIGHT_PSWD");
+
+        // 加入状态行
+        add_status_line(200, ok_200_title);
+        // 加入消息头
+        add_headers(m_file_stat.st_size);
+        // 初始化聚集写
+        m_iv[0].iov_base = m_write_buf;         //写缓冲地址
+        m_iv[0].iov_len = m_write_idx;          //写缓冲大小
         m_iv[1].iov_base = m_file_address;      //文件地址
         m_iv[1].iov_len = m_file_stat.st_size;  //文件大小
         m_iv_count = 2;
@@ -715,13 +910,19 @@ void http_conn::process()
         return;
     }
 
+    printf("***********************%s*******************\n",m_real_file);
+   // printf("***************\n");
+    printf("username: %s\n",m_login_name);
+    printf("userpswd: %s\n",m_login_pswd);
+    printf("***************\n");
+
     // 生成响应
     bool write_ret = process_write(read_ret);
     // 如果写失败或者请求有问题
     if (!write_ret)
     {
         // 关闭连接
-        close_conn();
+         close_conn();
     }
     // 等待可写事件, 可写事件的时候才真正把信息返回, 现在还存在缓冲区
     modfd(m_epollfd, m_sockfd, EPOLLOUT);

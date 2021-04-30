@@ -20,13 +20,16 @@
 #include <errno.h>
 #include "locker.h"
 #include <sys/uio.h>
+#include <mysql/mysql.h>
+#include "mysql_data.h"
+#include <string>
 
 class http_conn
 {
 public:
     static const int FILENAME_LEN = 200;        // 文件名的最大长度
     static const int READ_BUFFER_SIZE = 2048;   // 读缓冲区的大小
-    static const int WRITE_BUFFER_SIZE = 1024;  // 写缓冲区的大小
+    static const int WRITE_BUFFER_SIZE = 2048;  // 写缓冲区的大小
     
     // HTTP请求方法，这里只支持GET
     enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT};
@@ -45,21 +48,27 @@ public:
         GET_REQUEST         :   表示获得了一个完成的客户请求
         BAD_REQUEST         :   表示客户请求语法错误
         NO_RESOURCE         :   表示服务器没有资源
-        FORBIDDEN_REQUEST   :   表示客户对资源没有足够的访问权限
-        FILE_REQUEST        :   文件请求,获取文件成功
+        FORBIDDEN_REQUEST   :   表示客户对资源没有足够的访问权限RIGHT_PSWD
+        FILE_REQUEST        :   文件请求,获取文件成功RIGHT_PSWD
         INTERNAL_ERROR      :   表示服务器内部错误
         CLOSED_CONNECTION   :   表示客户端已经关闭连接了
+        RIGHT_PSWD          :   表示密码正确
     */
-    enum HTTP_CODE { NO_REQUEST, GET_REQUEST, BAD_REQUEST, NO_RESOURCE, FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION };
+    enum HTTP_CODE { NO_REQUEST, GET_REQUEST, BAD_REQUEST, NO_RESOURCE, 
+        FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION, RIGHT_PSWD,WRONG_PSWD, NOTFOUND_USER};
     
     // 从状态机的三种可能状态，即行的读取状态，分别表示
     // 1.读取到一个完整的行 2.行出错 3.行数据尚且不完整
     enum LINE_STATUS { LINE_OK , LINE_BAD, LINE_OPEN };
+
+    // 密码的三种状态 
+    // 密码正确, 密码错误, 未找到用户
+    enum PSWD_STATUS {PSWD_RIGHT,PSWD_WRONG, USER_NOTFOUND};
 public:
     http_conn(){}
     ~http_conn(){}
 public:
-    void init(int sockfd, const sockaddr_in& addr); // 初始化新接受的连接
+    void init(int sockfd, const sockaddr_in& addr,MyDB *mydb); // 初始化新接受的连接
     void close_conn();  // 关闭连接
     void process(); // 处理客户端请求
     bool read();// 非阻塞读
@@ -89,6 +98,13 @@ private:
     bool add_linger();
     bool add_blank_line();
 
+    HTTP_CODE parse_content_get(char *text);
+    HTTP_CODE parse_content_post(char *text);
+    void cut (char *text);
+    PSWD_STATUS check_pswdAnduser();
+
+
+
 public:
     static int m_epollfd;       // 所有socket上的事件都被注册到同一个epoll内核事件中，所以设置成静态的
     static int m_user_count;    // 统计用户的数量
@@ -109,6 +125,12 @@ private:
     char* m_url;                            // 客户请求的目标文件的文件名
     char* m_version;                        // HTTP协议版本号，我们仅支持HTTP1.1
     char* m_host;                           // 主机名
+
+    char* m_login_name;                     // 登录用户名
+    char* m_login_pswd;                     // 登陆密码
+
+    MyDB *m_mydb;
+    
     int m_content_length;                   // HTTP请求的消息总长度
     bool m_linger;                          // HTTP请求是否要求保持连接
 
