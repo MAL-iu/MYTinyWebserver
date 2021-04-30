@@ -578,7 +578,7 @@ http_conn::HTTP_CODE http_conn::process_read()
 
         // 更新当前新的请求行的行首地址
         m_start_line = m_checked_idx;
-        printf("%s\n", text);
+        // printf("%s\n", text);
 
         switch (m_check_state)
         {
@@ -872,7 +872,7 @@ bool http_conn::process_write(HTTP_CODE ret)
     case INTERNAL_ERROR:
 
 
-        puts("INTERNAL_ERROR");
+        // puts("INTERNAL_ERROR");
         // 错误号500
         // 加入状态行
         add_status_line(500, error_500_title);
@@ -887,7 +887,7 @@ bool http_conn::process_write(HTTP_CODE ret)
     // 语法错误
     case BAD_REQUEST:
 
-        puts("BAD_REQUEST");
+        // puts("BAD_REQUEST");
 
         add_status_line(400, error_400_title);
         add_headers(strlen(error_400_form));
@@ -900,7 +900,7 @@ bool http_conn::process_write(HTTP_CODE ret)
     case NO_RESOURCE:
 
 
-        puts("NO_RESOURCE");
+        // puts("NO_RESOURCE");
 
         add_status_line(404, error_404_title);
         add_headers(strlen(error_404_form));
@@ -912,7 +912,7 @@ bool http_conn::process_write(HTTP_CODE ret)
     // 权限不足
     case FORBIDDEN_REQUEST:
 
-        puts("FORBIDDEN_REQUEST");
+        // puts("FORBIDDEN_REQUEST");
 
         add_status_line(403, error_403_title);
         add_headers(strlen(error_403_form));
@@ -926,7 +926,7 @@ bool http_conn::process_write(HTTP_CODE ret)
     // 文件获取成功
     case FILE_REQUEST:
 
-        puts("FILE_REQUEST");
+        // puts("FILE_REQUEST");
 
         // 加入状态行
         add_status_line(200, ok_200_title);
@@ -965,12 +965,13 @@ void http_conn::process()
         return;
     }
 
-    printf("***********************%s*******************\n",m_real_file);
+    printf("********************************************\n");
+    printf("real_url: %s\n",m_real_file);
     printf("username: %s\n",m_login_name);
     printf("userpswd: %s\n",m_login_pswd);
     printf("rgstname: %s\n",m_rgt_name);
     printf("rgstpswd: %s\n",m_rgt_pswd);
-    printf("***************\n");
+    printf("********************************************\n");
 
     // 生成响应
     bool write_ret = process_write(read_ret);

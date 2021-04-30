@@ -45,11 +45,11 @@ char * MyDB::ExeSQL(std::string &sql)
  
     else
     {
-        if(sql[0]=='i')
-            return NULL;
+        
         /*获取结果集*/
         result = mysql_store_result(mysql);
-
+        if(result==NULL)
+            return NULL;
 
         int fieldnum = mysql_num_fields(result);
 
