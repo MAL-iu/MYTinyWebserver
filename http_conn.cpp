@@ -16,6 +16,12 @@ const char *doc_nonuser = "/user_notfd.html";
 const char *doc_welcome = "/LOGIN.html";
 const char *doc_pswderror = "/pswd_error.html";
 
+const char *doc_usr_exit = "/exist_user.html";
+const char *doc_ept_pswd = "/empty_pswd.html";
+const char *doc_rgst_ac = "/rgst_accept.html";
+
+const char *doc_home = "/index.html";
+
 
 // 网站的根目录
 const char *doc_root = "/home/mal/Webserver/resources";
@@ -155,7 +161,9 @@ void http_conn::init()
 
     m_login_name = 0;
 
+    m_rgt_name = 0;
 
+    m_rgt_pswd = 0;
 
 
 
@@ -266,28 +274,66 @@ void http_conn::cut(char *text)
             text += 9;
             m_login_pswd=text;
         }
+        if(strncasecmp(text,"rgtname=",8)==0)
+        {
+            text+=8;
+            m_rgt_name=text;
+        }
+        if(strncasecmp(text,"rgtpswd=",8)==0)
+        {
+            text+=8;
+            m_rgt_pswd=text;
+        }
         text=now;
         if(!now) break;
 
     }
 }
 
-
-http_conn::PSWD_STATUS http_conn::check_pswdAnduser()
+// 查找这个名字是否存在, 存在返回密码, 不存在就返回空
+char *http_conn::user_fd(char * name)
 {
     std::string a="select user_pswd from webuser where user_name=";
-    a=a+"'"+m_login_name+"';";
+    a=a+"'"+name+"';";
+    return m_mydb->ExeSQL(a);
+}
 
-    char *true_pswd=m_mydb->ExeSQL(a);
-    
-    if(true_pswd==NULL) return USER_NOTFOUND;
-    
+
+
+// 检查用户的密码是否正确
+http_conn::PSWD_STATUS http_conn::check_pswdAnduser()
+{
+    char *true_pswd=user_fd(m_login_name);
+    if(!true_pswd||!m_login_pswd) return USER_NOTFOUND;
     if(strcmp(true_pswd,m_login_pswd)==0)
         return PSWD_RIGHT;
     return PSWD_WRONG;
 
 }
 
+// 尝试注册
+http_conn::RGST_STATUS http_conn::try_rgst()
+{
+    if(user_fd(m_rgt_name))
+    {
+        return ARD_EXT;
+    }
+    else
+    {
+        if(m_rgt_pswd==NULL||m_rgt_pswd[0]=='\0')
+            return ERR_IN;
+        else
+        {
+            std::string a="insert into webuser values (";
+            a=a+"'"+m_rgt_name+"','"+m_rgt_pswd+"');";
+
+            m_mydb->ExeSQL(a);
+            std::cout<<a<<std::endl;
+            return RG_ACPT;
+        }
+            
+    }
+}
 
 
 // 解析HTTP请求行，获得请求方法，目标URL,以及HTTP版本号
@@ -431,8 +477,38 @@ http_conn::HTTP_CODE http_conn::parse_content_get(char *text)
     return NO_REQUEST;
 }
 
-// 解析POST请求的请求体
 
+void http_conn::Post_RGSTandLOGIN(http_conn::HTTP_CODE ret)
+{
+    if(ret== RIGHT_PSWD)/// POST请求的密码在请求体,如果请求体解析出来的密码正确
+    {
+        strcpy(m_url,doc_welcome);
+    }
+    else if(ret == WRONG_PSWD)
+    {
+        strcpy(m_url,doc_pswderror);
+    }
+    else if(ret == NOTFOUND_USER)
+    {
+        strcpy(m_url,doc_nonuser);
+    }
+    else if(ret == USR_EXT)
+    {
+        strcpy(m_url,doc_usr_exit);
+    }
+    else if(ret == ERR_PSWD)
+    {
+        strcpy(m_url,doc_ept_pswd);
+    }
+    else if(ret == RGST_AC)
+    {
+        strcpy(m_url,doc_rgst_ac);
+    }
+}
+
+
+
+// 解析POST请求的请求体
 http_conn::HTTP_CODE http_conn::parse_content_post(char *text)
 {
     ///m_read_idx 第一个字符位置
@@ -453,6 +529,16 @@ http_conn::HTTP_CODE http_conn::parse_content_post(char *text)
             return WRONG_PSWD;
         if(st==USER_NOTFOUND)
             return NOTFOUND_USER;
+    }
+    else if(m_rgt_name)
+    {
+        http_conn::RGST_STATUS st=try_rgst();
+        if(st==ARD_EXT)
+            return USR_EXT;
+        if(st==ERR_IN)
+            return ERR_PSWD;
+        if(st==RG_ACPT)
+            return RGST_AC;
     }
     
     return GET_REQUEST;
@@ -548,19 +634,9 @@ http_conn::HTTP_CODE http_conn::process_read()
                     // 说明行数据还不完整
                     line_status = LINE_OPEN;
                 }
-                else if(ret== RIGHT_PSWD)/// POST请求的密码在请求体,如果请求体解析出来的密码正确
+                else
                 {
-                    strcpy(m_url,doc_welcome);
-                    return do_request();
-                }
-                else if(ret == WRONG_PSWD)
-                {
-                    strcpy(m_url,doc_pswderror);
-                    return do_request();
-                }
-                else if(ret == NOTFOUND_USER)
-                {
-                    strcpy(m_url,doc_nonuser);
+                    Post_RGSTandLOGIN(ret);
                     return do_request();
                 }
                 break;
@@ -583,14 +659,11 @@ http_conn::HTTP_CODE http_conn::do_request()
 {
     // 把根目录复制到目标文件目录里
     strcpy(m_real_file, doc_root);
-    
-
 
     int len = strlen(doc_root);
     // 在根目录后面加上用户请求的路径
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
-    //printf("%s*************************************\n",m_real_file);
     // 获取m_real_file文件的相关的状态信息，-1失败，0成功
     if (stat(m_real_file, &m_file_stat) < 0)
     {
@@ -869,24 +942,6 @@ bool http_conn::process_write(HTTP_CODE ret)
         // 更新字节数
         bytes_to_send=m_write_idx+m_file_stat.st_size;
         return true;
-    case RIGHT_PSWD:
-
-        puts("RIGHT_PSWD");
-
-        // 加入状态行
-        add_status_line(200, ok_200_title);
-        // 加入消息头
-        add_headers(m_file_stat.st_size);
-        // 初始化聚集写
-        m_iv[0].iov_base = m_write_buf;         //写缓冲地址
-        m_iv[0].iov_len = m_write_idx;          //写缓冲大小
-        m_iv[1].iov_base = m_file_address;      //文件地址
-        m_iv[1].iov_len = m_file_stat.st_size;  //文件大小
-        m_iv_count = 2;
-
-        // 更新字节数
-        bytes_to_send=m_write_idx+m_file_stat.st_size;
-        return true;
     default:
         return false;
     }
@@ -911,9 +966,10 @@ void http_conn::process()
     }
 
     printf("***********************%s*******************\n",m_real_file);
-   // printf("***************\n");
     printf("username: %s\n",m_login_name);
     printf("userpswd: %s\n",m_login_pswd);
+    printf("rgstname: %s\n",m_rgt_name);
+    printf("rgstpswd: %s\n",m_rgt_pswd);
     printf("***************\n");
 
     // 生成响应

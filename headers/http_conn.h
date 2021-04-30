@@ -53,17 +53,30 @@ public:
         INTERNAL_ERROR      :   表示服务器内部错误
         CLOSED_CONNECTION   :   表示客户端已经关闭连接了
         RIGHT_PSWD          :   表示密码正确
+        WRONG_PSWD          :   表示密码错误
+        NOTFOUND_USER       :   用户未找到
+        USR_EXT             :   用户已存在
+        ERR_PSWD            :   密码错误
+        RGST_AC             :   注册成功
     */
     enum HTTP_CODE { NO_REQUEST, GET_REQUEST, BAD_REQUEST, NO_RESOURCE, 
-        FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION, RIGHT_PSWD,WRONG_PSWD, NOTFOUND_USER};
+        FORBIDDEN_REQUEST, FILE_REQUEST, INTERNAL_ERROR, CLOSED_CONNECTION, 
+        RIGHT_PSWD,WRONG_PSWD, NOTFOUND_USER,
+        USR_EXT, ERR_PSWD, RGST_AC
+    };
     
     // 从状态机的三种可能状态，即行的读取状态，分别表示
     // 1.读取到一个完整的行 2.行出错 3.行数据尚且不完整
     enum LINE_STATUS { LINE_OK , LINE_BAD, LINE_OPEN };
 
     // 密码的三种状态 
-    // 密码正确, 密码错误, 未找到用户
+    // 0密码正确, 1密码错误, 2未找到用户
     enum PSWD_STATUS {PSWD_RIGHT,PSWD_WRONG, USER_NOTFOUND};
+
+    // 注册的三种状态
+    // 0 ARD_EXT用户已存在, 1 ERR_IN密码或者用户为空, 2 RG_ACPT注册成功
+    enum RGST_STATUS {ARD_EXT,ERR_IN,RG_ACPT};
+
 public:
     http_conn(){}
     ~http_conn(){}
@@ -102,6 +115,12 @@ private:
     HTTP_CODE parse_content_post(char *text);
     void cut (char *text);
     PSWD_STATUS check_pswdAnduser();
+    char * user_fd(char *name);
+    RGST_STATUS try_rgst();
+
+
+    void Post_RGSTandLOGIN(HTTP_CODE ret);
+
 
 
 
@@ -128,6 +147,9 @@ private:
 
     char* m_login_name;                     // 登录用户名
     char* m_login_pswd;                     // 登陆密码
+
+    char* m_rgt_name;
+    char* m_rgt_pswd;
 
     MyDB *m_mydb;
     
